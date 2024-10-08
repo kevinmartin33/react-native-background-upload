@@ -373,7 +373,7 @@ RCT_EXPORT_METHOD(chunkFile: (NSString *)parentFilePath
 
     [sessionConfiguration setDiscretionary:NO];
     [sessionConfiguration setAllowsCellularAccess:YES];
-    [sessionConfiguration setHTTPMaximumConnectionsPerHost:1];
+    [sessionConfiguration setHTTPMaximumConnectionsPerHost:10];
 
     if (@available(iOS 11.0, *)) {
         [sessionConfiguration setWaitsForConnectivity:YES];
@@ -396,7 +396,7 @@ RCT_EXPORT_METHOD(chunkFile: (NSString *)parentFilePath
 
     [sessionConfiguration setDiscretionary:NO];
     [sessionConfiguration setAllowsCellularAccess:NO];
-    [sessionConfiguration setHTTPMaximumConnectionsPerHost:1];
+    [sessionConfiguration setHTTPMaximumConnectionsPerHost:10];
 
     if (@available(iOS 11.0, *)) {
         [sessionConfiguration setWaitsForConnectivity:YES];
