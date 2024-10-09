@@ -73,7 +73,6 @@ NSMutableDictionary *_responsesData = nil;
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
-
 // This method prevents crashing in development after a JS reload.
 // The reason for that is self is being sent to the operating system as delegate.
 // After a JS reload, the old self still sticks around accepting events and
@@ -396,7 +395,7 @@ RCT_EXPORT_METHOD(chunkFile: (NSString *)parentFilePath
 
 - (NSURLSession *)defaultUrlSession {
     NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration defaultSessionConfiguration];
-    [sessionConfiguration setDiscretionary:NO];
+    [sessionConfiguration setDiscretionary:YES];
     [sessionConfiguration setAllowsCellularAccess:YES];
     [sessionConfiguration setHTTPMaximumConnectionsPerHost:10];
     [sessionConfiguration setWaitsForConnectivity:YES];
@@ -408,7 +407,7 @@ RCT_EXPORT_METHOD(chunkFile: (NSString *)parentFilePath
 
 - (NSURLSession *)backgroundUrlSession {
     NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:BACKGROUND_SESSION_ID];
-    [sessionConfiguration setDiscretionary:NO];
+    [sessionConfiguration setDiscretionary:YES];
     [sessionConfiguration setAllowsCellularAccess:YES];
     [sessionConfiguration setHTTPMaximumConnectionsPerHost:10];
 
@@ -419,31 +418,51 @@ RCT_EXPORT_METHOD(chunkFile: (NSString *)parentFilePath
     return [NSURLSession sessionWithConfiguration:sessionConfiguration delegate:self delegateQueue:nil];
 }
 
+// - (NSURLSession *)urlSession {
+//     if (!_urlSession) {
+//         // _urlSession = self.isInBackground ? [self backgroundUrlSession] : [self defaultUrlSession];
+//         _urlSession = [self backgroundUrlSession];
+//     }
+//     return _urlSession;
+// }
+
 - (NSURLSession *)urlSession {
     if (!_urlSession) {
-        // _urlSession = self.isInBackground ? [self backgroundUrlSession] : [self defaultUrlSession];
-        _urlSession = [self backgroundUrlSession];
+        NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:BACKGROUND_SESSION_ID];
+        [sessionConfiguration setDiscretionary:NO]; // Set to NO to ensure uploads continue regardless of network conditions.
+        [sessionConfiguration setAllowsCellularAccess:YES]; // Allow cellular access.
+        [sessionConfiguration setHTTPMaximumConnectionsPerHost:10];
+        [sessionConfiguration setWaitsForConnectivity:YES];
+        [sessionConfiguration setAllowsConstrainedNetworkAccess:YES];
+        [sessionConfiguration setAllowsExpensiveNetworkAccess:YES];
+
+        _urlSession = [NSURLSession sessionWithConfiguration:sessionConfiguration delegate:self delegateQueue:nil];
     }
     return _urlSession;
 }
 
 - (NSURLSession *)wifiOnlyUrlSession {
-    if (_wifiOnlyUrlSession) return _wifiOnlyUrlSession;
-
-    NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:WIFI_ONLY_BACKGROUND_SESSION_ID];
-
-    [sessionConfiguration setDiscretionary:NO];
-    [sessionConfiguration setAllowsCellularAccess:NO];
-    [sessionConfiguration setHTTPMaximumConnectionsPerHost:10];
-
-    [sessionConfiguration setWaitsForConnectivity:YES];
-    [sessionConfiguration setAllowsConstrainedNetworkAccess:NO];
-    [sessionConfiguration setAllowsExpensiveNetworkAccess:NO];
-
-    _wifiOnlyUrlSession = [NSURLSession sessionWithConfiguration:sessionConfiguration delegate:self delegateQueue:nil];
-
-    return _wifiOnlyUrlSession;
+    // Remove or modify this method if you decide to use only one session configuration.
+    return [self urlSession]; // Use the same session configuration for both cases.
 }
+
+// - (NSURLSession *)wifiOnlyUrlSession {
+//     if (_wifiOnlyUrlSession) return _wifiOnlyUrlSession;
+
+//     NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:WIFI_ONLY_BACKGROUND_SESSION_ID];
+
+//     [sessionConfiguration setDiscretionary:YES];
+//     [sessionConfiguration setAllowsCellularAccess:NO];
+//     [sessionConfiguration setHTTPMaximumConnectionsPerHost:10];
+
+//     [sessionConfiguration setWaitsForConnectivity:YES];
+//     [sessionConfiguration setAllowsConstrainedNetworkAccess:YES];
+//     [sessionConfiguration setAllowsExpensiveNetworkAccess:YES];
+
+//     _wifiOnlyUrlSession = [NSURLSession sessionWithConfiguration:sessionConfiguration delegate:self delegateQueue:nil];
+
+//     return _wifiOnlyUrlSession;
+// }
 
 #pragma NSURLSessionTaskDelegate
 
@@ -468,27 +487,14 @@ didCompleteWithError:(NSError *)error {
 
     if (error == nil) {
         [self _sendEventWithName:@"RNFileUploader-completed" body:data];
-    } else {
+    }
+    else {
         [data setObject:error.localizedDescription forKey:@"error"];
         if (error.code == NSURLErrorCancelled) {
             [self _sendEventWithName:@"RNFileUploader-cancelled" body:data];
-        } else if (error.code == NSURLErrorNetworkConnectionLost || error.code == NSURLErrorTimedOut) {
-            // Retry logic for network interruption
-            [self retryUploadWithId:task.taskDescription];
         } else {
             [self _sendEventWithName:@"RNFileUploader-error" body:data];
         }
-    }
-}
-
-- (void)retryUploadWithId:(NSString *)uploadId {
-    NSDictionary *options = self.uploadOptions[uploadId];
-    if (options) {
-        [self startUpload:options resolve:^(id result) {
-            NSLog(@"Retry succeeded for uploadId: %@", uploadId);
-        } reject:^(NSString *code, NSString *message, NSError *error) {
-            NSLog(@"Retry failed for uploadId: %@", uploadId);
-        }];
     }
 }
 
