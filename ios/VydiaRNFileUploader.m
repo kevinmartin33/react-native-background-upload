@@ -6,6 +6,9 @@
 #import "Helper.h"
 
 @interface VydiaRNFileUploader : RCTEventEmitter <RCTBridgeModule, NSURLSessionTaskDelegate>
+
+@property (nonatomic, strong) NSURLSession *urlSession;
+
 @end
 
 @implementation VydiaRNFileUploader
@@ -65,17 +68,10 @@ NSMutableDictionary *_responsesData = nil;
  Borrowed from http://stackoverflow.com/questions/2439020/wheres-the-iphone-mime-type-database
  */
 - (NSString *)guessMIMETypeFromFileName: (NSString *)fileName {
-    CFStringRef UTI = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, (__bridge CFStringRef)[fileName pathExtension], NULL);
-    CFStringRef MIMEType = UTTypeCopyPreferredTagWithClass(UTI, kUTTagClassMIMEType);
-
-    if (UTI) {
-        CFRelease(UTI);
-    }
-
-    if (!MIMEType) {
-        return @"application/octet-stream";
-    }
-    return (__bridge NSString *)(MIMEType);
+    NSString *fileExtension = [fileName pathExtension];
+    UTType *type = [UTType typeWithFilenameExtension:fileExtension];
+    NSString *MIMEType = type.preferredMIMEType ?: @"application/octet-stream";
+    return MIMEType;
 }
 
 /*
@@ -147,6 +143,8 @@ RCT_EXPORT_METHOD(startUpload:(NSDictionary *)options resolve:(RCTPromiseResolve
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:requestUrl];
         [request setHTTPMethod: method];
 
+        request.networkServiceType = NSURLNetworkServiceTypeResponsiveData;
+
         [headers enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull val, BOOL * _Nonnull stop) {
             if ([val respondsToSelector:@selector(stringValue)]) {
                 val = [val stringValue];
@@ -155,7 +153,6 @@ RCT_EXPORT_METHOD(startUpload:(NSDictionary *)options resolve:(RCTPromiseResolve
                 [request setValue:val forHTTPHeaderField:key];
             }
         }];
-
 
         // asset library files have to be copied over to a temp file.  they can't be uploaded directly
         if ([fileURI hasPrefix:@"assets-library"]) {
@@ -366,26 +363,23 @@ RCT_EXPORT_METHOD(chunkFile: (NSString *)parentFilePath
     return httpBody;
 }
 
-- (NSURLSession *)urlSession {
-    if (_urlSession) return _urlSession;
-
+- (NSURLSession *)backgroundUrlSession {
     NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:BACKGROUND_SESSION_ID];
-
     [sessionConfiguration setDiscretionary:NO];
     [sessionConfiguration setAllowsCellularAccess:YES];
     [sessionConfiguration setHTTPMaximumConnectionsPerHost:10];
 
-    if (@available(iOS 11.0, *)) {
-        [sessionConfiguration setWaitsForConnectivity:YES];
+    [sessionConfiguration setWaitsForConnectivity:YES];
+    [sessionConfiguration setAllowsConstrainedNetworkAccess:YES];
+    [sessionConfiguration setAllowsExpensiveNetworkAccess:YES];
+
+    return [NSURLSession sessionWithConfiguration:sessionConfiguration delegate:self delegateQueue:nil];
+}
+
+- (NSURLSession *)urlSession {
+    if (!_urlSession) {
+        _urlSession = [self backgroundUrlSession];
     }
-
-    if (@available(iOS 13.0, *)) {
-        [sessionConfiguration setAllowsConstrainedNetworkAccess:YES];
-        [sessionConfiguration setAllowsExpensiveNetworkAccess:YES];
-    }
-
-    _urlSession = [NSURLSession sessionWithConfiguration:sessionConfiguration delegate:self delegateQueue:nil];
-
     return _urlSession;
 }
 
@@ -398,14 +392,9 @@ RCT_EXPORT_METHOD(chunkFile: (NSString *)parentFilePath
     [sessionConfiguration setAllowsCellularAccess:NO];
     [sessionConfiguration setHTTPMaximumConnectionsPerHost:10];
 
-    if (@available(iOS 11.0, *)) {
-        [sessionConfiguration setWaitsForConnectivity:YES];
-    }
-
-    if (@available(iOS 13.0, *)) {
-        [sessionConfiguration setAllowsConstrainedNetworkAccess:NO];
-        [sessionConfiguration setAllowsExpensiveNetworkAccess:NO];
-    }
+    [sessionConfiguration setWaitsForConnectivity:YES];
+    [sessionConfiguration setAllowsConstrainedNetworkAccess:NO];
+    [sessionConfiguration setAllowsExpensiveNetworkAccess:NO];
 
     _wifiOnlyUrlSession = [NSURLSession sessionWithConfiguration:sessionConfiguration delegate:self delegateQueue:nil];
 
