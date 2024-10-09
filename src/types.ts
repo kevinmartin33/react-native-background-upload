@@ -15,6 +15,7 @@ export interface ErrorData extends EventData {
 export interface CompletedData extends EventData {
   responseCode: number;
   responseBody: string;
+  headers: any;
 }
 
 export type UploadId = string;
