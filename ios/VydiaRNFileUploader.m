@@ -8,6 +8,7 @@
 @interface VydiaRNFileUploader : RCTEventEmitter <RCTBridgeModule, NSURLSessionTaskDelegate>
 
 @property (nonatomic, strong) NSURLSession *urlSession;
+@property (nonatomic, assign) BOOL isInBackground;
 
 @end
 
@@ -25,23 +26,53 @@ NSURLSession *_urlSession = nil;
 NSURLSession *_wifiOnlyUrlSession = nil;
 NSMutableDictionary *_responsesData = nil;
 
+- (void)applicationDidEnterBackground:(NSNotification *)notification {
+    self.isInBackground = YES;
+    // Réinitialiser la session pour utiliser la session en arrière-plan
+    self.urlSession = [self backgroundUrlSession];
+}
+
+- (void)applicationWillEnterForeground:(NSNotification *)notification {
+    self.isInBackground = NO;
+    // Réinitialiser la session pour utiliser la session par défaut
+    self.urlSession = [self defaultUrlSession];
+}
+
 + (BOOL)requiresMainQueueSetup {
     return NO;
 }
 
--(id) init {
+- (id)init {
     self = [super init];
-    if(!self) return self;
+    if (!self) return nil;
 
+    // Observer pour les changements d'état de l'application
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(applicationDidEnterBackground:)
+                                                 name:UIApplicationDidEnterBackgroundNotification
+                                               object:nil];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(applicationWillEnterForeground:)
+                                                 name:UIApplicationWillEnterForegroundNotification
+                                               object:nil];
+
+    // Initialiser l'état
+    self.isInBackground = NO;
     staticEventEmitter = self;
     _responsesData = [NSMutableDictionary dictionary];
 
-    // Initializes as early as possible to receive delegate events
-    // sent from previously registered URLSessions
+    // Initialiser les sessions pour recevoir les événements délégués
     [self urlSession];
     [self wifiOnlyUrlSession];
+
     return self;
 }
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 
 // This method prevents crashing in development after a JS reload.
 // The reason for that is self is being sent to the operating system as delegate.
@@ -363,6 +394,18 @@ RCT_EXPORT_METHOD(chunkFile: (NSString *)parentFilePath
     return httpBody;
 }
 
+- (NSURLSession *)defaultUrlSession {
+    NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration defaultSessionConfiguration];
+    [sessionConfiguration setDiscretionary:NO];
+    [sessionConfiguration setAllowsCellularAccess:YES];
+    [sessionConfiguration setHTTPMaximumConnectionsPerHost:10];
+    [sessionConfiguration setWaitsForConnectivity:YES];
+    [sessionConfiguration setAllowsConstrainedNetworkAccess:YES];
+    [sessionConfiguration setAllowsExpensiveNetworkAccess:YES];
+
+    return [NSURLSession sessionWithConfiguration:sessionConfiguration delegate:self delegateQueue:nil];
+}
+
 - (NSURLSession *)backgroundUrlSession {
     NSURLSessionConfiguration *sessionConfiguration = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:BACKGROUND_SESSION_ID];
     [sessionConfiguration setDiscretionary:NO];
@@ -378,6 +421,7 @@ RCT_EXPORT_METHOD(chunkFile: (NSString *)parentFilePath
 
 - (NSURLSession *)urlSession {
     if (!_urlSession) {
+        // _urlSession = self.isInBackground ? [self backgroundUrlSession] : [self defaultUrlSession];
         _urlSession = [self backgroundUrlSession];
     }
     return _urlSession;
