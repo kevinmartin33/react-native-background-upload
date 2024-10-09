@@ -474,8 +474,12 @@ didCompleteWithError:(NSError *)error {
     NSHTTPURLResponse *response = (NSHTTPURLResponse *)uploadTask.response;
     if (response != nil) {
         [data setObject:[NSNumber numberWithInteger:response.statusCode] forKey:@"responseCode"];
+        
+        // Extract headers and add them to the data dictionary
+        NSDictionary *headers = response.allHeaderFields;
+        [data setObject:headers forKey:@"headers"];
     }
-    //Add data that was collected earlier by the didReceiveData method
+    // Add data that was collected earlier by the didReceiveData method
     NSMutableData *responseData = _responsesData[@(task.taskIdentifier)];
     if (responseData) {
         [_responsesData removeObjectForKey:@(task.taskIdentifier)];
