@@ -468,14 +468,27 @@ didCompleteWithError:(NSError *)error {
 
     if (error == nil) {
         [self _sendEventWithName:@"RNFileUploader-completed" body:data];
-    }
-    else {
+    } else {
         [data setObject:error.localizedDescription forKey:@"error"];
         if (error.code == NSURLErrorCancelled) {
             [self _sendEventWithName:@"RNFileUploader-cancelled" body:data];
+        } else if (error.code == NSURLErrorNetworkConnectionLost || error.code == NSURLErrorTimedOut) {
+            // Retry logic for network interruption
+            [self retryUploadWithId:task.taskDescription];
         } else {
             [self _sendEventWithName:@"RNFileUploader-error" body:data];
         }
+    }
+}
+
+- (void)retryUploadWithId:(NSString *)uploadId {
+    NSDictionary *options = self.uploadOptions[uploadId];
+    if (options) {
+        [self startUpload:options resolve:^(id result) {
+            NSLog(@"Retry succeeded for uploadId: %@", uploadId);
+        } reject:^(NSString *code, NSString *message, NSError *error) {
+            NSLog(@"Retry failed for uploadId: %@", uploadId);
+        }];
     }
 }
 
